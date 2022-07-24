@@ -1,73 +1,48 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, TextInput, View, Button } from 'react-native';
-import Constants from 'expo-constants';
-import * as SQLite from 'expo-sqlite';
-
 import WebviewCrypto from 'react-native-webview-crypto';
 import { registerRootComponent } from 'expo';
+import Constants from 'expo-constants';
 
-import 'gun/lib/mobile'; // most important!
-import Gun from 'gun/gun';
-import SEA from 'gun/sea';
-import 'gun/lib/promise';
-import 'gun/lib/radix';
-import 'gun/lib/radisk';
-import 'gun/lib/store';
-import { makeStoreAdapter } from '@altrx/gundb-expo-sqlite-adapter';
+import { useGun, GunProvider } from './GunContext';
 
-makeStoreAdapter(Gun);
-const gun = new Gun({
-  localStorage: false,
-  radisk: true,
-  sqlite: {
-    SQLite,
-    databaseName: 'todo.db',
-    onOpen: () => {
-      console.log('DB OPENED');
-    },
-    onError: (err) => {
-      console.log('ERROR');
-    },
-    onReady: (err) => {
-      console.log('READY');
-    },
-  },
-});
-
-const node = gun.get('hello');
-
-export default function App() {
+const App = () => {
   const [name, setName] = useState('');
+  const { gun, SEA } = useGun();
+  const node = useRef();
 
   useEffect(() => {
-    node.once((data, key) => {
-      let name = data?.name;
-      setName(name);
-    });
-
-    async function doWork() {
-      const workTest = await SEA.work('test', null, null, {
-        name: 'SHA-256',
-        encode: 'hex',
-      });
-      console.log(workTest);
-      const pair = await SEA.pair();
-      const other = await SEA.pair();
-      const msg = await SEA.sign('I wrote this message! You did not.', pair);
-      const test = await SEA.verify(msg, pair.pub); // message gets printed
-      const test2 = await SEA.verify(msg, other.pub); // error
-      console.log('No message', test2);
-      console.log('Message', test);
-
-      gun.on('auth', () => {
-        console.log('authenticated with keypair');
+    if (gun) {
+      node.current = gun.get('hello');
+      node.current.once((data, key) => {
+        let name = data?.name;
+        setName(name);
       });
 
-      const namespace = gun.user();
-      namespace.auth(pair);
+      async function doWork() {
+        const workTest = await SEA.work('test', null, null, {
+          name: 'SHA-256',
+          encode: 'hex',
+        });
+        console.log(workTest);
+        const pair = await SEA.pair();
+        const other = await SEA.pair();
+        const msg = await SEA.sign('I wrote this message! You did not.', pair);
+        const test = await SEA.verify(msg, pair.pub); // message gets printed
+        const test2 = await SEA.verify(msg, other.pub); // error
+        console.log('No message', test2);
+        console.log('Message', test);
+
+        gun.on('auth', () => {
+          console.log('authenticated with keypair');
+        });
+
+        const namespace = gun.user();
+        namespace.auth(pair);
+      }
+      doWork();
     }
-    doWork();
-  }, []);
+  }, [gun]);
 
   return (
     <View style={styles.container}>
@@ -83,13 +58,13 @@ export default function App() {
       <Button
         title="Save"
         onPress={() => {
-          node.put({ name });
+          node.current.put({ name });
           setName(name);
         }}
       />
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -116,4 +91,12 @@ const styles = StyleSheet.create({
   },
 });
 
-registerRootComponent(App);
+export default function AppContainer() {
+  return (
+    <GunProvider>
+      <App />
+    </GunProvider>
+  );
+}
+
+registerRootComponent(AppContainer);
